@@ -6,16 +6,13 @@ from dotenv import load_dotenv
 
 import tex
 
-qw3 = ["Производственные работники", "Кассиры и операторы на складе", "Дорожные рабочие",
-       "Операторы по телемаркетингу",
-       "Некоторые аспекты медицинской диагностики", "Банковские служащие", "Программисты для рутинных задач",
-       "Автоперевозки (водители грузовиков и таксисты)", "Рабочие в сфере обслуживания",
-       "Функции бухгалтерии и финансов", "Специалисты по технической поддержке", "Операторы видеонаблюдения",
-       "Работники на складе в электронной коммерции", "Разработчики автоматизированных систем",
-       "Административные ассистенты", "Специалисты по анализу данных"]
+try:
+    with open('datafile.json', 'rb') as f:
+        user_info = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    user_info = {}
 
-with open('datafile.json', 'rb') as f:
-    user_info = json.load(f)
+clean_markup = telebot.types.ReplyKeyboardRemove()
 
 load_dotenv()
 token = getenv('BOT_TOKEN')
@@ -24,6 +21,18 @@ bot = telebot.TeleBot(token)
 
 
 @bot.message_handler(commands=['start'])
+def start(message: telebot.types.Message):
+    if str(message.from_user.id) in user_info.keys() and user_info[str(message.from_user.id)]['stage'] != 'end':
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(tex.t[message.from_user.language_code]['answers']['yes'],
+                   tex.t[message.from_user.language_code]['answers']['no'])
+        bot.send_message(chat_id=message.chat.id, text=tex.t[message.from_user.language_code]['answers']['resume'],
+                         reply_markup=markup)
+        user_info[str(message.from_user.id)]['resume'] = True
+    else:
+        send_welcome(message)
+
+
 def send_welcome(message: telebot.types.Message):
     bot.send_message(chat_id=message.from_user.id,
                      text=tex.t[message.from_user.language_code]['service']['start'].replace('{}',
@@ -32,8 +41,10 @@ def send_welcome(message: telebot.types.Message):
     user_info[str(message.from_user.id)] = {
         'name': message.from_user.first_name,
         'stage': 'start',
+        'age': -1,
+        'resume': False,
         'answers': {},
-        'age': -1
+
     }
     with open('datafile.json', 'w', encoding='utf-8') as f:
         json.dump(user_info, f, ensure_ascii=False, indent=3)
@@ -53,7 +64,9 @@ def stop_bot(message: telebot.types.Message):
 def open_admin(message: telebot.types.Message):
     bot.send_message(chat_id=6303315695, text=f'Произведен запрос ответов от {message.from_user.id}')
     if message.from_user.id == 6303315695:
-        bot.send_message(chat_id=6303315695, text=json.dumps(user_info, indent=3))
+        for i in range(len(json.dumps(user_info, indent=3)) // 4096):
+            bot.send_message(chat_id=6303315695, text=json.dumps(user_info, indent=3)[i * 4096:i * 4096 + 4096],
+                             protect_content=True)
     else:
         bot.send_message(chat_id=message.from_user.id, text='В доступе отказано!')
 
@@ -61,7 +74,19 @@ def open_admin(message: telebot.types.Message):
 @bot.message_handler(content_types=['text'])
 def send_anketa(message: telebot.types.Message):
     global user_info
-    if user_info[str(message.from_user.id)]['stage'] == 'start':
+    if user_info[str(message.from_user.id)]['resume']:
+        if message.text.lower() == 'yes' or message.text.lower() == 'да':
+            bot.send_message(chat_id=message.chat.id,
+                             text=tex.t[message.from_user.language_code]['answers']['resume_yes'],
+                             reply_markup=clean_markup)
+            user_info[str(message.from_user.id)]['resume'] = False
+        else:
+            bot.send_message(chat_id=message.chat.id,
+                             text=tex.t[message.from_user.language_code]['answers']['resume_no'],
+                             reply_markup=clean_markup)
+            user_info[str(message.from_user.id)]['resume'] = False
+            send_welcome(message)
+    elif user_info[str(message.from_user.id)]['stage'] == 'start':
         bot.send_message(chat_id=message.from_user.id,
                          text=tex.t[message.from_user.language_code]['question']['age'])
         user_info[str(message.from_user.id)]['stage'] = 'get_age'
@@ -77,14 +102,14 @@ def send_anketa(message: telebot.types.Message):
         user_info[str(message.from_user.id)]['stage'] = 'qw2'
     elif user_info[str(message.from_user.id)]['stage'] == 'qw2':
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for i in range(len(qw3)): markup.add(qw3[i])
+        for i in range(len(tex.t[message.from_user.language_code]['answers'][3])): markup.add(
+            tex.t[message.from_user.language_code]['answers'][3][i])
         bot.send_message(chat_id=message.from_user.id,
                          text=tex.t[message.from_user.language_code]['question'][3],
                          reply_markup=markup)
         user_info[str(message.from_user.id)]['answers']['2'] = message.text
         user_info[str(message.from_user.id)]['stage'] = 'qw3'
     elif user_info[str(message.from_user.id)]['stage'] == 'qw3':
-        clean_markup = telebot.types.ReplyKeyboardRemove()
         bot.send_message(chat_id=message.from_user.id,
                          text=tex.t[message.from_user.language_code]['question'][4], reply_markup=clean_markup)
         user_info[str(message.from_user.id)]['answers']['3'] = message.text
@@ -134,4 +159,4 @@ def send_anketa(message: telebot.types.Message):
         json.dump(user_info, f, ensure_ascii=False, indent=3)
 
 
-bot.polling()
+bot.infinity_polling(timeout=8)
