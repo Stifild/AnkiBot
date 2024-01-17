@@ -1,8 +1,7 @@
 import json
-from os import getenv
+import os
 
 import telebot
-from dotenv import load_dotenv
 
 import tex
 
@@ -14,8 +13,7 @@ except (FileNotFoundError, json.JSONDecodeError):
 
 clean_markup = telebot.types.ReplyKeyboardRemove()
 
-load_dotenv()
-token = getenv('BOT_TOKEN')
+token = os.environ['BOT_TOKEN']
 
 bot = telebot.TeleBot(token)
 
